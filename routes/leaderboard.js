@@ -30,7 +30,7 @@ module.exports = async function leaderboard (req, res) {
   console.log(`requesting from post ${startPosition}`)
 
   const responses = await createBatches({
-    numberOfPosts: Number(posts < 1500 ? posts : 1500),
+    numberOfPosts: Number(posts < 300 ? posts : 300),
     startPosition,
     refreshcache,
     subdomain
@@ -113,15 +113,15 @@ module.exports = async function leaderboard (req, res) {
     const comments = users[userId]
       ? users[userId].comments.concat([{
         commentUrl,
-        commentFavorites,
+        commentFavorites
         // commentContent,
-        tags
+        // tags
       }])
       : [{
         commentUrl,
-        commentFavorites,
+        commentFavorites
         // commentContent,
-        tags
+        // tags
       }]
 
     users[userId] = {
