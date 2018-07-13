@@ -1,22 +1,26 @@
 const axios = require('axios')
 const format = require('date-fns/format')
-const subDays = require('date-fns/sub_days')
-const isBefore = require('date-fns/is_before')
 const calculations = require('../lib/calculations')
 const regexes = require('../lib/regexes')
 const cache = require('../lib/cache')
 
-module.exports = async function (req, res) {
+module.exports = async function leaderboard (req, res) {
   const subdomain = req.params.subdomain
   const user = req.query.user
   const limit = req.query.limit
   const posts = req.query.posts || 200
   const sort = req.query.sort || 'activity'
+  const refreshcache = req.query.refreshcache
+  let dateRangeCovered
+
+  if (!['www', 'metatalk', 'ask'].includes(subdomain)) {
+    res.send(404)
+  }
 
   const subdomainHomepage = `https://${subdomain === 'www' ? '' : `${subdomain}.`}metafilter.com/`
   const cachedHomepage = await cache.get(subdomainHomepage)
   let startPosition
-  if (cachedHomepage) {
+  if (cachedHomepage && !refreshcache) {
     startPosition = cachedHomepage.match(regexes.postNumber)[1]
   } else {
     const { data } = await axios.get(subdomainHomepage)
@@ -26,8 +30,9 @@ module.exports = async function (req, res) {
   console.log(`requesting from post ${startPosition}`)
 
   const responses = await createBatches({
-    numberOfPosts: Number(posts),
+    numberOfPosts: Number(posts < 1500 ? posts : 1500),
     startPosition,
+    refreshcache,
     subdomain
   })
   console.log('batches resolved!')
@@ -39,7 +44,10 @@ module.exports = async function (req, res) {
     if (!comments) return []
 
     if (index === resp.length - 1) {
-      console.log(`${format(new Date(), 'MMMM Do, YYYY')} to ${data.match(regexes.dateRegex)[1]}`)
+      const startDate = data.match(regexes.dateRegex)[1]
+      const endDate = format(new Date(), 'MMMM Do, YYYY')
+      dateRangeCovered = `${startDate} to  ${endDate}`
+      console.log(dateRangeCovered)
     }
 
     const tagInfo = data.match(regexes.tags) ? data.match(regexes.tags).map(match => {
@@ -50,11 +58,13 @@ module.exports = async function (req, res) {
       const commentFavorites = comment.match(regexes.comment.favorites)
         ? Number(comment.match(regexes.comment.favorites)[1])
         : 0
+      //  const commentContent = comment.match(regexes.comment.text)[1]
       return {
         userId: Number(comment.match(regexes.user.id)[1]),
         href: comment.match(regexes.user.href)[1],
         name: comment.match(regexes.user.name)[1],
         commentFavorites,
+        // commentContent,
         commentUrl: `https://${subdomain}.metafilter.com${comment.match(regexes.comment.href)[1]}`,
         tags: tagInfo
       }
@@ -66,30 +76,15 @@ module.exports = async function (req, res) {
 
   function rankCommenters (commenters) {
     const commentersArr = Object.values(commenters)
-    const qualifiedCommenters = commentersArr.filter(c => c.commentCount >= 5)
-    let currentPopularityRank = 0
     const popularitySorted = Object.values(commentersArr)
       .sort((a, b) => a.commentCount < b.commentCount ? 1 : -1)
       .map((userInfo, index) => {
         userInfo.activityRank = index + 1
         return userInfo
       })
-      .sort((a, b) => a.favorited < b.favorited ? 1 : -1)
+      .sort((a, b) => a.totalFavorites < b.totalFavorites ? 1 : -1)
       .map((userInfo, index) => {
         userInfo.popularityRank = index + 1
-        return userInfo
-      })
-      .map((userInfo) => {
-        userInfo.coolness = userInfo.activityRank - userInfo.popularityRank
-        return userInfo
-      }).sort((a, b) => {
-        return a.favoritesPerComment < b.favoritesPerComment ? 1 : -1
-      }).map((userInfo, index) => {
-        const moreThanTenComments = userInfo.commentCount >= 5
-        if (moreThanTenComments) {
-          currentPopularityRank = currentPopularityRank + 1
-          userInfo.relativePopularity = `${currentPopularityRank} of ${qualifiedCommenters.length}`
-        }
         return userInfo
       })
     if (sort === 'activity') {
@@ -108,9 +103,9 @@ module.exports = async function (req, res) {
     const { name, href, userId, tags, commentFavorites, commentUrl } = comment
     const currentTags = users[userId] ? users[userId].tags : {}
     const commentCount = users[userId] ? users[userId].commentCount + 1 : 1
-    const favorited = users[userId] ? users[userId].favorited + commentFavorites : commentFavorites
-    const politicalness = calculations.percentage(currentTags.potus45, commentCount)
-    const favoritesPerComment = favorited / commentCount
+    const totalFavorites = users[userId] ? users[userId].totalFavorites + commentFavorites : commentFavorites
+    const politicalCommentsPercentage = calculations.percentage(currentTags.potus45, commentCount)
+    const favoritesPerComment = Number(((totalFavorites / commentCount) || 0).toFixed(2))
 
     tags.forEach(tag => {
       currentTags[tag] ? currentTags[tag] = currentTags[tag] + 1 : currentTags[tag] = 1
@@ -119,21 +114,23 @@ module.exports = async function (req, res) {
       ? users[userId].comments.concat([{
         commentUrl,
         commentFavorites,
+        // commentContent,
         tags
       }])
       : [{
         commentUrl,
         commentFavorites,
+        // commentContent,
         tags
       }]
 
     users[userId] = {
       tags: currentTags,
       favoritesPerComment,
-      politicalness,
+      politicalCommentsPercentage,
+      totalFavorites,
       commentCount,
-      favorited,
-      comments,
+      comments: comments.sort((a, b) => a.commentFavorites < b.commentFavorites ? 1 : -1),
       userId,
       href,
       name
@@ -161,11 +158,15 @@ module.exports = async function (req, res) {
     })
   } else {
     res.send({
+      totalComments,
+      politicalComments,
+      politicalPercentage: calculations.percentage(politicalComments, totalComments),
+      dateRangeCovered,
       data: limit ? leaderboard.slice(0, limit) : leaderboard
     })
   }
 
-  async function createBatches ({ numberOfPosts, startPosition, subdomain }) {
+  async function createBatches ({ numberOfPosts, startPosition, subdomain, refreshcache }) {
     return new Promise(async (resolve, reject) => {
       let currentProccessed = 0
       let batchSize = numberOfPosts < 30 ? numberOfPosts : 30
@@ -174,7 +175,7 @@ module.exports = async function (req, res) {
       console.log('starting batches...')
       while (currentProccessed < numberOfPosts) {
         console.log(`current processed: ${currentProccessed}`)
-        const batchedResponses = await batch(sp, batchSize, subdomain)
+        const batchedResponses = await batch(sp, batchSize, subdomain, refreshcache)
         const batchResponse = await Promise.all(batchedResponses)
         batchResponses = batchResponses.concat(batchResponse)
         sp = sp - batchSize
@@ -183,12 +184,8 @@ module.exports = async function (req, res) {
       }
       console.log('resolving batches...')
       batchResponses.forEach(response => {
-        if (!response.fromCache) {
-          const cuttoff = subDays(new Date(), 2)
+        if (!response.fromCache && response.request && response.request.path) {
           let options = {}
-          // if (isBefore(new Date(response.data.match(regexes.dateRegex)[1]), cuttoff)) {
-          //   options.expires = 60 * 24 * 7
-          // }
           cache.set(`https://${subdomain}.metafilter.com/${response.request.path.split('/')[1]}`, response.data, options)
         }
       })
@@ -196,12 +193,12 @@ module.exports = async function (req, res) {
     })
   }
 
-  async function batch (startPosition, batchNumber, subdomain) {
+  async function batch (startPosition, batchNumber, subdomain, refreshcache) {
     let x = 0
     let responses = []
     while (x < batchNumber) {
       const cachedResponse = await cache.get(`https://${subdomain}.metafilter.com/${startPosition - x}`)
-      if (cachedResponse) {
+      if (cachedResponse && !refreshcache) {
         responses.push(new Promise((resolve) => resolve({ data: cachedResponse, fromCache: true })))
       } else {
         responses.push(axios.get(`https://${subdomain}.metafilter.com/${startPosition - x}`).catch(e => {

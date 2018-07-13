@@ -1,4 +1,5 @@
 .PHONY: start create-db bootstrap test watch;
+BIN= ./node_modules/.bin
 
 start:
 	node index.js
@@ -10,7 +11,8 @@ create-db:
 	node /db/create.js
 
 test:
+	standard
 	jest
 
 watch:
-	nodemon index.js
+	$(BIN)/nodemon index.js

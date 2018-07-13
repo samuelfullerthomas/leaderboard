@@ -1,5 +1,6 @@
 const express = require('express')
 const app = express()
+const worker = require('./worker')
 
 const routes = require('./routes')
 
@@ -8,3 +9,5 @@ app.get('/', (req, res) => res.send('hi there!'))
 
 app.listen(1337)
 console.log('App listening on port 1337')
+
+worker.start()
