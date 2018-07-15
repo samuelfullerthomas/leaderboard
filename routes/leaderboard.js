@@ -30,7 +30,7 @@ module.exports = async function leaderboard (req, res) {
   console.log(`requesting from post ${startPosition}`)
 
   const responses = await createBatches({
-    numberOfPosts: Number(posts < 300 ? posts : 300),
+    numberOfPosts: Number(posts < 600 ? posts : 600),
     startPosition,
     refreshcache,
     subdomain
