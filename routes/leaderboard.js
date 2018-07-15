@@ -1,8 +1,8 @@
 const axios = require('axios')
 const format = require('date-fns/format')
-const calculations = require('../lib/calculations')
 const regexes = require('../lib/regexes')
 const cache = require('../lib/cache')
+const _ = require('lodash')
 
 module.exports = async function leaderboard (req, res) {
   const subdomain = req.params.subdomain
@@ -97,14 +97,14 @@ module.exports = async function leaderboard (req, res) {
         return a.favoritesPerComment < b.favoritesPerComment ? 1 : -1
       })
     }
-    return popularitySorted
+    return popularitySorted.map(user => _.omit(user, ['tags', 'comments']))
   }
   const leaderboard = rankCommenters(flatten(userInformation).reduce((users, comment) => {
     const { name, href, userId, tags, commentFavorites, commentUrl } = comment
     const currentTags = users[userId] ? users[userId].tags : {}
     const commentCount = users[userId] ? users[userId].commentCount + 1 : 1
     const totalFavorites = users[userId] ? users[userId].totalFavorites + commentFavorites : commentFavorites
-    const politicalCommentsPercentage = calculations.percentage(currentTags.potus45, commentCount)
+    const politicalCommentsPercentage = Number(((currentTags.potus45 / commentCount) || 0).toFixed(2))
     const favoritesPerComment = Number(((totalFavorites / commentCount) || 0).toFixed(2))
 
     tags.forEach(tag => {
@@ -150,20 +150,25 @@ module.exports = async function leaderboard (req, res) {
   console.log(`Total comments: ${totalComments}`)
   console.log(`Political comments: ${politicalComments}`)
   console.log(`Political percentage (sitewide): ${politicalComments / totalComments}`)
+  res.header('Content-Type', 'application/json')
 
   if (user) {
     const singleUser = leaderboard.filter((userInfo) => userInfo.name === user)
-    res.send({
-      data: singleUser
-    })
-  } else {
-    res.send({
+    res.send(JSON.stringify({
       totalComments,
       politicalComments,
-      politicalPercentage: calculations.percentage(politicalComments, totalComments),
+      politicalPercentage: Number(((politicalComments / totalComments) || 0).toFixed(2)),
       dateRangeCovered,
-      data: limit ? leaderboard.slice(0, limit) : leaderboard
-    })
+      data: singleUser.map(user => _.omit(user, ['tags', 'comments']))
+    }))
+  } else {
+    res.send(JSON.stringify({
+      totalComments,
+      politicalComments,
+      politicalPercentage: Number(((politicalComments / totalComments) || 0).toFixed(2)),
+      dateRangeCovered,
+      data: limit ? leaderboard.slice(0, limit).map(user => _.omit(user, ['tags', 'comments'])) : leaderboard.map(user => _.omit(user, ['tags', 'comments']))
+    }))
   }
 
   async function createBatches ({ numberOfPosts, startPosition, subdomain, refreshcache }) {

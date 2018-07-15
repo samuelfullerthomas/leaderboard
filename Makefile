@@ -2,7 +2,7 @@
 BIN= ./node_modules/.bin
 
 start:
-	node index.js
+	NODE_ENV=production node index.js
 
 bootstrap:
 	npm install
@@ -15,4 +15,4 @@ test:
 	jest
 
 watch:
-	$(BIN)/nodemon index.js
+	NODE_ENV=development $(BIN)/nodemon index.js
