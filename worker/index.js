@@ -28,7 +28,12 @@ async function process (subdomain, posts = DEFAULT_POSTS) {
   const { data: homepageData } = await axios.get(subdomainHomepage)
   let startPosition = homepageData.match(regexes.postNumber)[1]
 
-  cache.set(subdomainHomepage, homepageData)
+  await cache.set(subdomainHomepage, homepageData)
+  const alreadyCached = await cache.get(subdomain)
+  if (alreadyCached) {
+    log.info('cached infromation already exists for this subdomain!')
+    return true
+  }
   const allUserInformation = { users: [] }
   while (posts > 0) {
     const { users, dateRangeCovered } = await createBatches({
