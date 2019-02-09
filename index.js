@@ -15,7 +15,6 @@ if (process.env.ROLE === 'worker') {
       allowedOrigins: [ /https?:\/\/.*\.samthomas.io\/.*/ ]
     }))
   }
-
   app.get('/leaderboard/:subdomain', routes.leaderboard)
   app.get('/', (req, res) => res.send('hi there!'))
 
