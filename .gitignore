@@ -2,3 +2,4 @@ node_modules
 .vscode
 local.yml
 production.yml
+.DS_Store
