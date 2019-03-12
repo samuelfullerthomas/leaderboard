@@ -53,8 +53,6 @@ async function process (subdomain, posts = DEFAULT_POSTS) {
 
   cache.set(subdomain, JSON.stringify(leaderboard))
 
-  redis.disconnect()
-
   async function createBatches ({ numberOfPosts, startPosition, subdomain, startingPost }) {
     return new Promise(async (resolve, reject) => {
       let currentProccessed = 0
@@ -97,13 +95,11 @@ async function process (subdomain, posts = DEFAULT_POSTS) {
 
 module.exports = {
   start: function () {
-    refreshCache()
     const job = new CronJob({
-      cronTime: '00 */12 * * *',
-      onTick: refreshCache,
-      start: false,
-      timeZone: 'America/Los_Angeles'
+      cronTime: '* * */4 * * *',
+      onTick: refreshCache
     })
     job.start()
+    refreshCache()
   }
 }

@@ -1,10 +1,10 @@
 const redis = require('../../lib/redis')
 const log = require('../../lib/createLogger')('leadboard-handler')
 
-const cache = redis.connect()
 const _ = require('lodash')
 
 module.exports = async function leaderboard (req, res) {
+  const cache = redis.connect()
   const subdomain = req.params.subdomain
   const user = req.query.user
   // const posts = req.query.posts || 200
@@ -28,6 +28,11 @@ module.exports = async function leaderboard (req, res) {
   } catch (e) {
     log.error(e)
     res.send(emptyResponse)
+  }
+
+  if (!leaderboard) {
+    res.send(emptyResponse)
+    return
   }
 
   const {

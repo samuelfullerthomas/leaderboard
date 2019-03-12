@@ -4,7 +4,6 @@ const worker = require('./worker')
 const cors = require('cors')
 const log = require('./lib/createLogger')
 const routes = require('./routes')
-
 if (process.env.ROLE === 'worker') {
   worker.start()
 } else {
